@@ -671,10 +671,16 @@ def fix_unmatched_think_end_tokens(
 ) -> mx.array:
     if not tokenizer.has_thinking:
         return tokens
-    assert tokenizer.think_start_id
-    assert tokenizer.think_end_id
-    think_start_id: int = tokenizer.think_start_id
-    think_end_id: int = tokenizer.think_end_id
+    try:
+        think_start_id_val = tokenizer.think_start_id
+        think_end_id_val = tokenizer.think_end_id
+    except ValueError:
+        # Multi-token thinking sequences (e.g. Gemma 4) are not supported here
+        return tokens
+    if not think_start_id_val or not think_end_id_val:
+        return tokens
+    think_start_id: int = think_start_id_val
+    think_end_id: int = think_end_id_val
     token_list: list[int] = cast(list[int], tokens.tolist())
     result: list[int] = []
     depth = 0

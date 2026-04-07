@@ -567,6 +567,11 @@ def mlx_generate(
         if task.stop is not None
         else []
     )
+
+    # Gemma models use <end_of_turn> which may not be in the tokenizer's eos_token_id
+    if "gemma" in task.model.lower() and "<end_of_turn>" not in stop_sequences:
+        stop_sequences.append("<end_of_turn>")
+
     max_stop_len = max((len(s) for s in stop_sequences), default=0)
 
     maybe_vision_ctx = (

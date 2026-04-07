@@ -42,6 +42,10 @@ def apply_all_parsers(
     mlx_generator = receiver
 
     if tokenizer.has_thinking:
+        logger.debug(
+            f"Thinking tokenizer: has_thinking={tokenizer.has_thinking} "
+            f"think_start={tokenizer.think_start!r} think_end={tokenizer.think_end!r}"
+        )
         mlx_generator = parse_thinking_models(
             mlx_generator,
             tokenizer.think_start,

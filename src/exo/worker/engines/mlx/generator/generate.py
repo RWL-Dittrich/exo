@@ -623,10 +623,11 @@ def mlx_generate(
         generated_text_parts.append(out.text)
         accumulated_text += out.text
 
-        if think_start is not None and out.text == think_start:
-            in_thinking = True
-        elif think_end is not None and out.text == think_end:
-            in_thinking = False
+        if think_start is not None or think_end is not None:
+            last_start = accumulated_text.rfind(think_start) if think_start else -1
+            last_end = accumulated_text.rfind(think_end) if think_end else -1
+            if last_start >= 0 or last_end >= 0:
+                in_thinking = last_start > last_end
         if in_thinking:
             reasoning_tokens += 1
 

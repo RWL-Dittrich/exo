@@ -413,16 +413,23 @@ def load_tokenizer_for_model_id(
         eos_token_ids=eos_token_ids,
     )
 
-    if "gemma-3" in model_id_lower:
-        gemma_3_eos_id = 1
-        gemma_3_end_of_turn_id = 106
-        if tokenizer.eos_token_ids is not None:
-            if gemma_3_end_of_turn_id not in tokenizer.eos_token_ids:
-                tokenizer.eos_token_ids = list(tokenizer.eos_token_ids) + [
-                    gemma_3_end_of_turn_id
-                ]
-        else:
-            tokenizer.eos_token_ids = [gemma_3_eos_id, gemma_3_end_of_turn_id]
+    if "gemma" in model_id_lower:
+        # Ensure <end_of_turn> is in eos_token_ids for all Gemma models.
+        # Gemma 3 uses token ID 106, Gemma 4 may differ — look it up dynamically.
+        eos_ids = list(tokenizer.eos_token_ids or [])
+        try:
+            end_of_turn_id: int = tokenizer._tokenizer.convert_tokens_to_ids(  # pyright: ignore[reportAttributeAccessIssue]
+                "<end_of_turn>"
+            )
+            if isinstance(end_of_turn_id, int) and end_of_turn_id not in eos_ids:
+                eos_ids.append(end_of_turn_id)
+        except Exception:
+            # Fallback: hardcoded Gemma 3 value
+            if 106 not in eos_ids:
+                eos_ids.append(106)
+        if 1 not in eos_ids:
+            eos_ids.append(1)
+        tokenizer.eos_token_ids = eos_ids
 
     return tokenizer
 

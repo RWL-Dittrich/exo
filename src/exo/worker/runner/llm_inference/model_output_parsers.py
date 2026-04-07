@@ -42,7 +42,7 @@ def apply_all_parsers(
     mlx_generator = receiver
 
     if tokenizer.has_thinking:
-        logger.info(
+        logger.debug(
             f"Thinking tokenizer: has_thinking={tokenizer.has_thinking} "
             f"think_start={tokenizer.think_start!r} think_end={tokenizer.think_end!r}"
         )
@@ -307,26 +307,80 @@ def parse_thinking_models(
 ) -> Generator[GenerationResponse | None]:
     """Route thinking tokens via is_thinking flag.
 
-    Swallows think tag tokens, sets is_thinking on all others.
+    Uses accumulated text matching to handle both single-token and multi-token
+    thinking markers (e.g. Gemma 4's ``<|channel>thought`` / ``<channel|>``).
+    Swallows marker text, sets is_thinking on all other tokens.
     Always yields tokens with finish_reason to avoid hanging the chunk stream.
     """
     is_thinking = starts_in_thinking
+    accumulated = ""
+    last_response: GenerationResponse | None = None
+
+    markers: list[tuple[str, bool]] = []
+    if think_start:
+        markers.append((think_start, True))
+    if think_end:
+        markers.append((think_end, False))
+
+    def _could_be_prefix(text: str) -> bool:
+        """Check if text ends with a partial prefix of any marker."""
+        for marker, _ in markers:
+            max_check = len(marker) - 1
+            if max_check <= 0:
+                continue
+            tail = text[-max_check:] if len(text) > max_check else text
+            for i in range(len(tail)):
+                if marker.startswith(tail[i:]):
+                    return True
+        return False
+
+    def _flush(text: str, template: GenerationResponse) -> GenerationResponse:
+        return template.model_copy(update={"text": text, "is_thinking": is_thinking})
+
     for response in responses:
         if response is None:
             yield None
             continue
+
         if response.finish_reason is not None:
+            if accumulated and last_response:
+                yield _flush(accumulated, last_response)
+                accumulated = ""
             yield response.model_copy(update={"is_thinking": False})
             continue
 
-        if response.text == think_start:
-            is_thinking = True
-            continue
-        if response.text == think_end:
-            is_thinking = False
+        accumulated += response.text
+        last_response = response
+
+        # Process all complete markers in accumulated text
+        changed = True
+        while changed:
+            changed = False
+            for marker, new_state in markers:
+                if marker not in accumulated:
+                    continue
+                idx = accumulated.index(marker)
+                before = accumulated[:idx]
+                if before:
+                    yield _flush(before, response)
+                is_thinking = new_state
+                accumulated = accumulated[idx + len(marker) :]
+                changed = True
+                break  # restart to check for more markers
+
+        if not accumulated:
             continue
 
-        yield response.model_copy(update={"is_thinking": is_thinking})
+        # Buffer if text could be start of a marker
+        if _could_be_prefix(accumulated):
+            continue
+
+        yield _flush(accumulated, response)
+        accumulated = ""
+
+    # Flush remaining buffered text at generator end
+    if accumulated and last_response:
+        yield _flush(accumulated, last_response)
 
 
 def parse_tool_calls(

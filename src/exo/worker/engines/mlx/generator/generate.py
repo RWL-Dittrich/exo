@@ -568,9 +568,12 @@ def mlx_generate(
         else []
     )
 
-    # Gemma models use <end_of_turn> which may not be in the tokenizer's eos_token_id
-    if "gemma" in task.model.lower() and "<end_of_turn>" not in stop_sequences:
-        stop_sequences.append("<end_of_turn>")
+    # Gemma models use <end_of_turn> / <turn|> which may not be in the tokenizer's
+    # eos_token_id. Gemma 3 decodes it as <end_of_turn>, Gemma 4 as <turn|>.
+    if "gemma" in task.model.lower():
+        for eos_text in ("<end_of_turn>", "<turn|>"):
+            if eos_text not in stop_sequences:
+                stop_sequences.append(eos_text)
 
     max_stop_len = max((len(s) for s in stop_sequences), default=0)
 
